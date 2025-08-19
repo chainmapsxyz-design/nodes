@@ -1,0 +1,13 @@
+{
+  "name": "chainmaps.xyz",
+  "version": "0.1.0",
+  "description": "",
+  "exports": {
+    "./frontend": "./frontend/index.js",
+    "./runtime": "./runtime/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module"
+}
