@@ -1,3 +1,4 @@
+// src/nodes/core/Constant/meta.js
 export const meta = {
   label: "Constant",
   version: "1.0.0",

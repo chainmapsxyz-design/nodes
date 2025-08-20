@@ -28,6 +28,7 @@ Frontend uses it to render/search nodes; backend uses it to look up handlers and
 | `color`           | `string`                              | UI theming hook (optional). |
 | `colorAlt`        | `string`                              | Alternate theming hook (optional). |
 | `blockchains`     | `string[]`                            | Supported chains (e.g. `["all"]`). |
+| `maxPerGraph`     | `number`                              | Restriction on graph placement. |
 | `inputs`          | `Array<IO>`                           | Declares input handles. |
 | `outputs`         | `Array<IO>`                           | Declares output handles (must match `run()` keys). |
 | `config`          | `Array<ConfigField>`                  | Inspector schema for `node.data`. |

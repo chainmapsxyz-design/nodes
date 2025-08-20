@@ -1,4 +1,4 @@
-// nodes/core/Formatter/index.js
+// nodes/events/Webhook/index.js
 import { run } from "./process.js";
 import { meta } from "./meta.js";
 import UI from "./ui.jsx";

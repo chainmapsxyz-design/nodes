@@ -8,7 +8,7 @@ import Inspector from "./inspector.jsx";
  * Register this node with the frontend registries.
  * Caller passes shared registries; we mutate them.
  */
-export function registerFrontend({ nodeTypes, inspectorRegistry, nodePalette }) {
+export function registerFrontend({ nodeTypes, inspectorRegistry, nodePalette, metaRegistry }) {
     nodeTypes[meta.type] = UI;
     if (Inspector) inspectorRegistry[meta.type] = Inspector;
 
@@ -25,6 +25,8 @@ export function registerFrontend({ nodeTypes, inspectorRegistry, nodePalette }) 
         color: meta.color || "default",
         colorAlt: meta.colorAlt || "default",
     });
+
+    if (metaRegistry) metaRegistry.set(meta.type, meta);
 }
 
 /** * Register this node with the runtime handlers.

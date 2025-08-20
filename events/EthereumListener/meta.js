@@ -11,6 +11,7 @@ export const meta = {
     color: "default",
     colorAlt: "default",
     blockchains: ["ethereum"],
+    maxPerGraph: 1,
 
     // I/O (runtime may add dynamic per-arg outputs; base contract is a single event object)
     inputs: [],
