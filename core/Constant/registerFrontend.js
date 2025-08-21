@@ -1,12 +1,18 @@
-// nodes/events/EthereumListener/index.js
-import { run } from "./process.js";
+// nodes/core/Constant/registerFrontend.js
 import { meta } from "./meta.js";
 import UI from "./ui.jsx";
 import Inspector from "./inspector.jsx";
 
 /**
  * Register this node with the frontend registries.
- * Caller passes shared registries; we mutate them.
+ * Browser/Vite only; imports JSX.
+ *
+ * @param {{
+ *   nodeTypes: Record<string, any>,
+ *   inspectorRegistry: Record<string, any>,
+ *   nodePalette: Array<any>,
+ *   metaRegistry?: Map<string, any>
+ * }} registries
  */
 export function registerFrontend({ nodeTypes, inspectorRegistry, nodePalette, metaRegistry }) {
     nodeTypes[meta.type] = UI;
@@ -27,12 +33,4 @@ export function registerFrontend({ nodeTypes, inspectorRegistry, nodePalette, me
     });
 
     if (metaRegistry) metaRegistry.set(meta.type, meta);
-}
-
-/** * Register this node with the runtime handlers.
- * 
- */
-export function registerRuntime({ handlers }) {
-    if (!meta?.type || typeof run !== "function") return;
-    handlers.set(meta.type, { run });
 }

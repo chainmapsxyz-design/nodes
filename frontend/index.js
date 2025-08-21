@@ -1,6 +1,6 @@
 // nodes/frontend/index.js
-import { registerCoreFrontend } from "../core/index.js";
-import { registerEventsFrontend } from "../events/index.js";
+import { registerCoreFrontend } from "../core/registerFrontend.js";
+import { registerEventsFrontend } from "../events/registerFrontend.js";
 
 const nodeTypes = {};
 const inspectorRegistry = {};
