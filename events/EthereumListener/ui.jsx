@@ -57,7 +57,7 @@ export default function EthereumListenerNode({ data }) {
             <Muted>All values mode is on, but no visible args.</Muted>
           ) : (
             visibleArgs.map((arg, i) => {
-              const name = arg?.name || `arg_${i}`; // already flattened: e.g., consideration:itemType
+              const name = arg?.name || `arg_${i}`;
               return (
                 <div
                   key={name}

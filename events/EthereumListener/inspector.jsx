@@ -15,8 +15,10 @@ export default function EthereumListenerInspector({ node, value, onChange }) {
   const ethereumApi = useEthereumApi(authedFetch);
 
   const address = value?.address ?? "";
+  const networkKey = value?.networkKey ?? "ethereum-mainnet";
   const events = value?.events ?? [];
   const eventName = value?.eventName ?? "";
+  const eventAbi = value?.eventAbi ?? null;
   const argsRaw = value?.argsRaw ?? [];
   const argsFlat = value?.argsFlat ?? [];
   const argVisibility = value?.argVisibility ?? {};
@@ -49,6 +51,7 @@ export default function EthereumListenerInspector({ node, value, onChange }) {
         address: trimmed,
         events: evts,
         eventName: "",
+        eventAbi: null,
         argsRaw: [],
         argsFlat: [],
         argVisibility: {},
@@ -61,17 +64,24 @@ export default function EthereumListenerInspector({ node, value, onChange }) {
   }
 
   function onSelectEvent(name) {
-    const evt = (events || []).find((e) => e.name === name);
+    const evt = (events || []).find((e) => e.name === name) || null;
     const inputs = Array.isArray(evt?.inputs) ? evt.inputs : [];
     const flat = flattenArgs(inputs);
     const vis = {};
-    for (const f of flat) vis[f.name] = true; // default visible on flattened keys
+    for (const f of flat) vis[f.name] = true;
+
     onChange?.({
       eventName: name || "",
+      // canonical fragment for backend
+      eventAbi: evt ? { type: "event", name: evt.name, inputs } : null,
       argsRaw: inputs,
       argsFlat: flat,
       argVisibility: vis,
     });
+  }
+
+  function onSelectNetwork(nextKey) {
+    onChange?.({ networkKey: nextKey || "ethereum-mainnet" });
   }
 
   function toggleArgVisibility(argName) {
@@ -108,6 +118,21 @@ export default function EthereumListenerInspector({ node, value, onChange }) {
           </button>
         </div>
         {err ? <div style={errorStyle}>{err}</div> : null}
+      </Section>
+
+      <Section title="Network">
+        <label style={labelStyle}>Select network</label>
+        <select
+          value={networkKey}
+          onChange={(e) => onSelectNetwork(e.target.value)}
+          style={selectStyle}
+        >
+          {NETWORK_OPTIONS.map((n) => (
+            <option key={n.key} value={n.key}>
+              {n.label}
+            </option>
+          ))}
+        </select>
       </Section>
 
       <Section title="Event">
@@ -191,6 +216,11 @@ export default function EthereumListenerInspector({ node, value, onChange }) {
   );
 }
 
+const NETWORK_OPTIONS = [
+  { key: "ethereum-mainnet", label: "Ethereum Mainnet" },
+  { key: "ethereum-sepolia", label: "Ethereum Sepolia" },
+];
+
 // ——— helpers ———
 function flattenArgs(args, prefix = "", parentWasArray = false) {
   const out = [];
@@ -203,7 +233,6 @@ function flattenArgs(args, prefix = "", parentWasArray = false) {
 
     if (isTuple) {
       const comps = Array.isArray(arg?.components) ? arg.components : [];
-      // Propagate array-ness so leaves become e.g. "uint256[]" under tuple[]
       out.push(...flattenArgs(comps, fullName, parentWasArray || isArray));
       continue;
     }
@@ -214,8 +243,8 @@ function flattenArgs(args, prefix = "", parentWasArray = false) {
 
     out.push({
       ...arg,
-      name: fullName, // flattened: e.g., consideration:itemType
-      type: displayType, // e.g., uint256[]
+      name: fullName,
+      type: displayType,
       sourcePath: (prefix ? prefix.split(":") : []).concat(baseName),
     });
   }

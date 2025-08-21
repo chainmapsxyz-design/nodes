@@ -50,9 +50,12 @@ export default function WebhookNode({ data }) {
           <span
             style={{
               fontSize: 11,
-              padding: "2px 6px",
+              fontWeight: 400,
+              lineHeight: 1,
+              padding: "4px 6px",
+              borderRadius: 6,
               border: "1px solid #e2e8f0",
-              borderRadius: 999,
+              color: "#475569",
               background: "#f8fafc",
             }}
           >
