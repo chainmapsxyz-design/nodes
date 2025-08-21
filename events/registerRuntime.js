@@ -3,7 +3,7 @@ import { registerRuntime as registerEthereumListenerRuntime } from "./EthereumLi
 import { registerRuntime as registerWebhookRuntime } from "./Webhook/registerRuntime.js";
 // ...add more as you create them
 
-export function registerCoreRuntime(registries) {
+export function registerEventsRuntime(registries) {
     registerEthereumListenerRuntime(registries);
     registerWebhookRuntime(registries);
 }
