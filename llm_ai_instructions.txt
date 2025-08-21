@@ -38,9 +38,9 @@ export default function FormatterNode({ data }) {
 Interactive editor for node properties. Receives { node, value, onChange }. Updates node.data. Handles validation and previews.
 
 5. process.js
-Runtime execution logic. Exports run({ inputs, data, context }). Must return outputs matching meta.js.
+Runtime execution logic. Exports run(ctx, node, inputs, event). Must return outputs matching meta.js.
 Example:
-export async function run({ inputs, data }) { return { value: data?.value ?? null } }
+export async function run(inputs, data) { return { value: data?.value ?? null } }
 
 6. registerFrontend.js
 Registers node with the frontend. Safe to import JSX. Example:

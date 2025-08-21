@@ -5,21 +5,14 @@
  *
  * Contract:
  *   inputs: merged upstream values keyed by source handle (expects exactly one)
- *   data:   { method, url, headers: [{key,value}], timeoutMs }
- *   context: { fetchImpl?, logger? }
+ *   node.data: { method, url, headers: [{key,value}] | {k:v}, timeoutMs }
+ *   ctx: { fetchImpl?, logger?, abortSignal? }
  *
  * Returns:
  *   { response, status, ok }
- *
- * Notes:
- * - For non-GET methods, upstream input is sent as JSON body.
- * - For GET, input is appended as a `data` query parameter (JSON-serialized).
- * - `headers` can be an array of { key, value } or a plain object.
- * - Respects timeout via AbortController.
  */
 
 function normalizeHeaders(headers) {
-    // Accept either [{key,value}] or { key: value, ... }
     if (Array.isArray(headers)) {
         const out = {};
         for (const h of headers) {
@@ -37,10 +30,8 @@ function normalizeHeaders(headers) {
 
 function firstInput(inputs) {
     if (!inputs || typeof inputs !== "object") return undefined;
-    // Prefer a conventional "in" or "value" handle if present
     if ("in" in inputs) return inputs.in;
     if ("value" in inputs) return inputs.value;
-    // Fallback to first enumerable key
     const k = Object.keys(inputs)[0];
     return k ? inputs[k] : undefined;
 }
@@ -50,7 +41,6 @@ function withTimeout(signal, ms) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(new Error("Request timed out")), ms);
     const cancel = () => clearTimeout(timer);
-    // If a parent signal exists, forward abort
     if (signal && typeof signal.addEventListener === "function") {
         if (signal.aborted) ctrl.abort(signal.reason);
         else signal.addEventListener("abort", () => ctrl.abort(signal.reason), { once: true });
@@ -75,27 +65,27 @@ async function parseResponse(res) {
     }
 }
 
-export async function run({ inputs, data, context = {} }) {
-    const logger = context.logger || console;
-    const fetchImpl = context.fetchImpl || (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null);
+export async function run(ctx, node, inputs, _event) {
+    const logger = ctx?.logger || console;
+    const fetchImpl =
+        ctx?.fetchImpl || (typeof fetch !== "undefined" ? fetch.bind(globalThis) : null);
 
     if (!fetchImpl) {
         throw new Error("Webhook node: no fetch implementation available.");
     }
 
-    const method = String(data?.method || "POST").toUpperCase();
-    let url = String(data?.url || "").trim();
-    const timeoutMs = Number.isFinite(data?.timeoutMs) ? data.timeoutMs : 10000;
+    const data = node?.data || {};
+    const method = String(data.method || "POST").toUpperCase();
+    let url = String(data.url || "").trim();
+    const timeoutMs = Number.isFinite(data.timeoutMs) ? data.timeoutMs : 10000;
 
     if (!url) {
         throw new Error("Webhook node: URL is required.");
     }
 
-    // Upstream payload (single input)
     const payload = firstInput(inputs);
 
-    // Headers
-    const hdrs = normalizeHeaders(data?.headers);
+    const hdrs = normalizeHeaders(data.headers);
     const headers = new Headers();
     for (const [k, v] of Object.entries(hdrs)) {
         if (k) headers.set(k, String(v));
@@ -105,26 +95,23 @@ export async function run({ inputs, data, context = {} }) {
     let body = undefined;
 
     if (isGetLike) {
-        // Append ?data=<json> to the URL
         try {
             const u = new URL(url);
             u.searchParams.set("data", JSON.stringify(payload ?? null));
             url = u.toString();
         } catch {
-            // If URL constructor fails (relative URL, etc.), fallback to naive append
             const sep = url.includes("?") ? "&" : "?";
             const enc = encodeURIComponent(JSON.stringify(payload ?? null));
             url = `${url}${sep}data=${enc}`;
         }
     } else {
-        // Ensure Content-Type for JSON body if not already present
         if (!headers.has("Content-Type")) {
             headers.set("Content-Type", "application/json");
         }
         body = JSON.stringify(payload ?? null);
     }
 
-    const { signal, cancel } = withTimeout(context.abortSignal, timeoutMs);
+    const { signal, cancel } = withTimeout(ctx?.abortSignal, timeoutMs);
     let res;
     try {
         res = await fetchImpl(url, {
@@ -135,7 +122,6 @@ export async function run({ inputs, data, context = {} }) {
         });
     } catch (err) {
         cancel();
-        // Surface a structured failure
         return {
             response: { error: String(err?.message || err) },
             status: 0,
@@ -151,10 +137,6 @@ export async function run({ inputs, data, context = {} }) {
     } catch {
         parsed = null;
     }
-
-    // Optional: include a small subset of response headers (not required)
-    // const responseHeaders = {};
-    // res.headers.forEach((v, k) => { responseHeaders[k] = v; });
 
     return {
         response: parsed,

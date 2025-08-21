@@ -6,26 +6,16 @@
  * Contract:
  *   inputs: merged upstream values keyed by source handle id
  *           (e.g., { value: 123, amount: 5, json: {...} })
- *   data:   {
+ *   node.data: {
  *     mode: "json" | "string",
  *     template: string,
  *     // optional: availableParams from inspector wiring
  *     // availableParams: [{ name, type, src, nodeId, preview }, ...]
  *   }
- *   context: { logger?, incomingValues? }
+ *   ctx: { logger?, incomingValues?, fetchImpl?, abortSignal? }
  *
  * Returns:
  *   { value } where value is string (mode="string") or object (mode="json", or null on invalid)
- *
- * Notes:
- * - Token syntax:
- *     {{name}}           → resolves from inputs[name]
- *     {{src.name}}       → uses availableParams hint; falls back to inputs[name]
- *     {{src.name[2]}}    → best-effort disambiguation; requires context.incomingValues
- * - JSON mode:
- *     Replaces tokens with JSON-safe fragments. If substitution yields invalid JSON, returns { value: null }.
- * - String mode:
- *     Replaces tokens with stringified values (JSON.stringify for objects/arrays).
  */
 
 function isObject(v) {
@@ -34,18 +24,6 @@ function isObject(v) {
 
 /**
  * Build a lookup map for tokens using available hints.
- * Returns:
- *   {
- *     bySimple: Map<name, value>,            // {{name}}
- *     byQualified: Map<"src.name", value>,   // {{src.name}}
- *     byIndexed: Map<"src.name[2]", value>,  // {{src.name[2]}}
- *   }
- *
- * Limitations:
- * - If multiple upstream edges provide the same handle name (e.g., "value"),
- *   the engine’s merged `inputs` may only contain one of them. Without
- *   `context.incomingValues` (array aligned to availableParams), duplicates
- *   cannot be perfectly disambiguated. We fall back to the single value.
  */
 function buildVarMaps({ inputs = {}, data = {}, context = {} }) {
     const bySimple = new Map();
@@ -69,12 +47,10 @@ function buildVarMaps({ inputs = {}, data = {}, context = {} }) {
         const count = (counts.get(baseKey) || 0) + 1;
         counts.set(baseKey, count);
 
-        // Prefer explicit per-edge value when provided by context.incomingValues;
-        // otherwise fall back to inputs[name].
-        let val = undefined;
+        let val;
         if (incomingValues && idx < incomingValues.length) {
             val = incomingValues[idx];
-        } else if (inputs && Object.prototype.hasOwnProperty.call(inputs, name)) {
+        } else if (Object.prototype.hasOwnProperty.call(inputs, name)) {
             val = inputs[name];
         } else {
             val = undefined;
@@ -89,8 +65,6 @@ function buildVarMaps({ inputs = {}, data = {}, context = {} }) {
 
 /**
  * Token finder: returns [{ raw, key, start, end }]
- * raw: the full matched token including braces, e.g. "{{foo}}"
- * key: the inner key, e.g. "foo" or "src.name[2]"
  */
 function findTokens(str = "") {
     const tokens = [];
@@ -111,24 +85,20 @@ function findTokens(str = "") {
  * Resolve token key to a value using maps.
  */
 function resolveToken(key, maps) {
-    // Qualified with index?
     if (/\[[0-9]+\]$/.test(key)) {
         const v = maps.byIndexed.get(key);
         if (typeof v !== "undefined") return v;
     }
-    // Qualified without index
     if (key.includes(".")) {
         const v = maps.byQualified.get(key);
         if (typeof v !== "undefined") return v;
     }
-    // Simple name
     if (maps.bySimple.has(key)) return maps.bySimple.get(key);
     return undefined;
 }
 
 /**
  * Replace tokens in "string" mode.
- * Values are stringified for objects/arrays; primitives are String(value).
  */
 function renderString(template, maps) {
     if (typeof template !== "string" || template.length === 0) return "";
@@ -151,12 +121,6 @@ function renderString(template, maps) {
 
 /**
  * Replace tokens in "json" mode with JSON-safe fragments.
- *
- * Heuristic:
- *  - If token appears within JSON quotes, insert an escaped JSON string.
- *  - Else, insert JSON.stringify(value) (so numbers/booleans/null remain unquoted).
- *
- * Finally, we try JSON.parse on the result; if it fails, we return null.
  */
 function renderJson(template, maps) {
     if (typeof template !== "string" || template.length === 0) return null;
@@ -169,11 +133,8 @@ function renderJson(template, maps) {
         }
     }
 
-    // Build a char array for context checks
     const chars = Array.from(template);
 
-    // Helper: detect whether position 'i' is currently inside a double-quoted JSON string.
-    // This is a simplistic scanner that tracks quotes and backslash escapes.
     function isInsideQuotes(index) {
         let inside = false;
         let esc = false;
@@ -195,10 +156,9 @@ function renderJson(template, maps) {
     let result = template;
     for (const t of tokens) {
         const v = resolveToken(t.key, maps);
-        // Choose fragment based on context
         const fragment = isInsideQuotes(t.start)
-            ? JSON.stringify(String(v ?? "")) // inside quotes → always a JSON string
-            : JSON.stringify(v ?? null); // bare → proper JSON literal
+            ? JSON.stringify(String(v ?? ""))
+            : JSON.stringify(v ?? null);
 
         result = result.split(t.raw).join(fragment);
     }
@@ -210,11 +170,13 @@ function renderJson(template, maps) {
     }
 }
 
-export async function run({ inputs, data, context = {} }) {
+export async function run(ctx, node, inputs, _event) {
+    const context = ctx || {};
     const logger = context.logger || console;
 
-    const mode = data?.mode === "string" ? "string" : "json";
-    const template = typeof data?.template === "string" ? data.template : mode === "string" ? "" : "{}";
+    const data = node?.data || {};
+    const mode = data.mode === "string" ? "string" : "json";
+    const template = typeof data.template === "string" ? data.template : (mode === "string" ? "" : "{}");
 
     const maps = buildVarMaps({ inputs, data, context });
 
@@ -223,9 +185,8 @@ export async function run({ inputs, data, context = {} }) {
         return { value };
     }
 
-    // json
     const value = renderJson(template, maps);
-    return { value }; // may be null if invalid JSON after substitution
+    return { value };
 }
 
 export default { run };
