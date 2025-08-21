@@ -1,208 +1,67 @@
-Node Development Reference (Full Manual)
+Node Development Reference (Condensed for LLM)
 
-This guide explains how to create new nodes for the visual graph system.
-It covers the meta definition, frontend components (UI, inspector),
-runtime integration, styling practices, and the interaction between the
-app and node data. It includes examples, code templates, and integration
-notes.
+1. Node Folder Structure
+Each node lives in its own folder:
+meta.js → identity, I/O, defaults
+ui.jsx → graph view box, read-only
+inspector.jsx → editable form for node properties
+process.js → runtime logic
+registerFrontend.js → registers UI/inspector/meta with the frontend
+registerRuntime.js → registers runtime handler with the backend/worker
 
-================================================================= 1.
-Node Folder Structure
-================================================================= Each
-node lives in its own folder: nodes/// ├── meta.js ├── ui.jsx ├──
-inspector.jsx ├── process.js └── index.js
+2. meta.js
+Defines node metadata and schema. Required: type, label, inputs, outputs, config, getInitialData(). Example:
+export const meta = {
+  label: "Formatter",
+  version: "1.0.0",
+  description: "Formats inputs",
+  keywords: ["template","format"],
+  type: "core.formatter",
+  category: "Core",
+  icon: "🧩",
+  inputs: [{ key: "in", label: "Inputs", type: "any" }],
+  outputs: [{ key: "value", label: "Value", type: ["string","object"] }],
+  config: [ { key: "mode", type: "enum", options: ["json","string"], default: "json" } ],
+  getInitialData: () => ({ mode: "json" }),
+  isDeterministic: true,
+  hasSideEffects: false
+}
 
--   meta.js → identity, I/O, defaults.
--   ui.jsx → graph view box, read-only.
--   inspector.jsx → editable form for node properties.
--   process.js → runtime logic.
--   index.js → registers both UI and runtime.
+3. ui.jsx
+Lightweight, read-only representation of a node. Shows title, labels, previews, status. Exposes React Flow handles. Example:
+import { Handle, Position } from "@xyflow/react";
+export default function FormatterNode({ data }) {
+  return <div><Handle id="in" type="target" position={Position.Left} /><Handle id="value" type="source" position={Position.Right} /></div>
+}
 
-================================================================= 2.
-meta.js
-=================================================================
-Defines node metadata and schema. Used in frontend and backend.
+4. inspector.jsx
+Interactive editor for node properties. Receives { node, value, onChange }. Updates node.data. Handles validation and previews.
 
-Required fields: - type → stable string ID (e.g. “core.constant”). -
-label → display name. - inputs / outputs → handle definitions. - config
-→ inspector schema. - getInitialData() → default node state.
-
+5. process.js
+Runtime execution logic. Exports run({ inputs, data, context }). Must return outputs matching meta.js.
 Example:
+export async function run({ inputs, data }) { return { value: data?.value ?? null } }
 
-export const meta = { label: “Formatter”, version: “1.0.0”, description:
-“Formats inputs into a JSON or string template.”, keywords: [“template”,
-“format”, “json”, “string”], type: “core.formatter”, category: “Core”,
-icon: “🧩”, blockchains: [“all”],
+6. registerFrontend.js
+Registers node with the frontend. Safe to import JSX. Example:
+import { meta } from "./meta.js"; import UI from "./ui.jsx"; import Inspector from "./inspector.jsx";
+export function registerFrontend({ nodeTypes, inspectorRegistry, nodePalette, metaRegistry }) {
+  nodeTypes[meta.type] = UI;
+  inspectorRegistry[meta.type] = Inspector;
+  nodePalette.push({ type: meta.type, label: meta.label, getData: meta.getInitialData });
+  if (metaRegistry) metaRegistry.set(meta.type, meta);
+}
 
-inputs: [{ key: “in”, label: “Inputs”, type: “any” }], outputs: [{ key:
-“value”, label: “Value”, type: [“string”, “object”] }],
+7. registerRuntime.js
+Registers node with the backend/worker. Does not import JSX. Example:
+import { run } from "./process.js"; import { meta } from "./meta.js";
+export function registerRuntime({ handlers }) { handlers.set(meta.type, { run }) }
 
-config: [ { key: “mode”, label: “Mode”, type: “enum”, options: [“json”,
-“string”], default: “json” }, { key: “template”, label: “Template”,
-type: “string”, default: “{}” } ],
+8. App ↔ Node Data Flow
+Graph stores nodes/edges. Inspector edits .data. NodeInspector wires inspector. FlowCanvas recomputes node.data.availableParams on edges change. Example: connecting Constant updates Formatter.availableParams.
 
-getInitialData: () => ({ mode: “json”, template: “{}” }),
+9. Styling Guidelines
+Borders: 1px solid #cbd5e1, Shadows: light, Fonts: system-ui + monospace, Pills: border 1px solid #e2e8f0, background #f8fafc
 
-isDeterministic: true, hasSideEffects: false, };
-
-================================================================= 3.
-ui.jsx (Graph Canvas View)
-=================================================================
-Lightweight, read-only representation of a node.
-
--   Shows title, labels, previews, and status.
--   Exposes React Flow handles for connections.
--   No editing inside the node.
-
-Styling conventions: - Padding: 12px - Border: 1px solid #cbd5e1 -
-Border radius: 10px - Background: white - Small “pill” labels for
-type/mode/status - Monospace fonts for previews
-
-Example:
-
-import { Handle, Position } from “@xyflow/react”;
-
-export default function FormatterNode({ data }) { const mode =
-data?.mode || “json”; const varsCount =
-Array.isArray(data?.availableParams) ? data.availableParams.length : 0;
-const valid = mode === “string” ? true :
-validateJsonTemplate(data?.template);
-
-return ( <div style={{ padding: 12, borderRadius: 10, border: “1px solid
-#cbd5e1”, background: “white”, minWidth: 220 }}> <div style={{ display:
-“flex”, alignItems: “center”, gap: 8 }}> <div style={{ fontWeight: 800
-}}>Formatter
-        <ModePill mode={mode} />
-      </div>
-      <div style={{ fontSize: 12 }}>Variables: {varsCount}</div>
-      <div style={{ fontSize: 12 }}>Status: <span style={{ color: valid ? "#16a34a" : "#dc2626" }}>{valid ? "Valid" : "Invalid"}</span></div>
-
-      <Handle id="in" type="target" position={Position.Left} />
-      <Handle id="value" type="source" position={Position.Right} />
-    </div>
-
-); }
-
-================================================================= 4.
-inspector.jsx (Sidebar Editor)
-=================================================================
-Interactive editor for node properties.
-
--   Receives { node, value, onChange }
--   value = node.data
--   onChange(nextData) updates graph state
--   Keeps local state synced with node.data
--   Handles validation and previews
-
-Formatter example features: - Toggle JSON / String mode - Textarea for
-template - Auto-populated variable list from connected nodes - Click
-inserts {{token}} into textarea
-
-================================================================= 5.
-process.js
-=================================================================
-Runtime execution logic.
-
--   Exports run({ inputs, data, context })
--   Must return object keys matching outputs in meta.js
-
-Example:
-
-export async function run({ inputs, data }) { const mode = data?.mode ||
-“json”; const template = data?.template || ““;
-
-const vars = { …inputs }; let out = template; for (const [key, val] of
-Object.entries(vars)) { out = out.replaceAll({{${key}}}, String(val)); }
-
-if (mode === “json”) { try { return { value: JSON.parse(out) }; } catch
-{ return { value: null }; } } return { value: out }; }
-
-================================================================= 6.
-index.js
-=================================================================
-Registers node with frontend and runtime.
-
-Example:
-
-import { meta } from “./meta.js”; import UI from “./ui.jsx”; import
-Inspector from “./inspector.jsx”; import { run } from “./process.js”;
-
-export function registerFrontend({ nodeTypes, inspectorRegistry,
-nodePalette }) { nodeTypes[meta.type] = UI; inspectorRegistry[meta.type]
-= Inspector; nodePalette.push({ type: meta.type, label: meta.label,
-icon: meta.icon, getData: meta.getInitialData, category: meta.category
-}); }
-
-export function registerRuntime({ handlers }) { handlers.set(meta.type,
-{ run }); }
-
-================================================================= 7. App
-↔ Node Data Flow
-================================================================= -
-Graph stores nodes/edges in state. Each node has .data - Inspector edits
-.data via onChange - NodeInspector wires inspector into graph state -
-FlowCanvas recomputes node.data.availableParams when edges change
-(onConnect, onEdgesChange)
-
-Formatter variable example: - When a Constant is connected, FlowCanvas
-updates Formatter.data.availableParams with { name, type, src, preview
-} - Inspector renders variables list dynamically
-
-================================================================= 8.
-Styling Guidelines
-================================================================= -
-Borders: 1px solid #cbd5e1 - Shadows: 0 1px 4px rgba(0,0,0,0.06) -
-Fonts: system-ui for labels, ui-monospace for previews - Pills/tags:
-border 1px solid #e2e8f0, background #f8fafc - Buttons: radius 8px,
-border 1px solid #cbd5e1 - Textareas: monospace, minHeight 200px
-
-================================================================= 9.
-Templates (for fast copy/paste)
-=================================================================
-
-meta.js template:
-
-export const meta = { label: “NewNode”, version: “1.0.0”, description:
-“Describe function”, keywords: [], type: “core.newnode”, category:
-“Core”, inputs: [], outputs: [{ key: “value”, label: “Value”, type:
-“any” }], config: [], getInitialData: () => ({}), isDeterministic: true,
-hasSideEffects: false, };
-
-ui.jsx template:
-
-import { Handle, Position } from “@xyflow/react”; export default
-function NewNode({ data }) { return ( <div style={{ padding: 12, border:
-“1px solid #cbd5e1”, borderRadius: 10, background: “white” }}> <div
-style={{ fontWeight: 800 }}>NewNode
-      <Handle id="value" type="source" position={Position.Right} />
-    </div>
-
-); }
-
-inspector.jsx template:
-
-export default function NewNodeInspector({ node, value, onChange }) {
-return ( <div style={{ display: “grid”, gap: 10 }}> <div style={{
-fontWeight: 800 }}>NewNode
-      {/* Add form inputs here */}
-    </div>
-
-); }
-
-process.js template:
-
-export async function run({ inputs, data }) { return { value:
-data?.value ?? null }; }
-
-index.js template:
-
-import { meta } from “./meta.js”; import UI from “./ui.jsx”; import
-Inspector from “./inspector.jsx”; import { run } from “./process.js”;
-
-export function registerFrontend({ nodeTypes, inspectorRegistry,
-nodePalette }) { nodeTypes[meta.type] = UI; inspectorRegistry[meta.type]
-= Inspector; nodePalette.push({ type: meta.type, label: meta.label,
-getData: meta.getInitialData, category: meta.category }); }
-
-export function registerRuntime({ handlers }) { handlers.set(meta.type,
-{ run }); }
+10. Templates
+meta.js, ui.jsx, inspector.jsx, process.js, registerFrontend.js, registerRuntime.js provided as boilerplate.
