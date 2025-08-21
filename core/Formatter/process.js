@@ -1,11 +1,11 @@
-// nodes/core/Formatter/process.js
+// src/nodes/core/Formatter/process.js
 
 /**
  * Formatter process handler
  *
  * Contract:
  *   inputs: merged upstream values keyed by source handle id
- *           (e.g., { value: 123, amount: 5, json: {...} })
+ *           (e.g., { value: 123, amount: 5, json: {...}, event: {...} })
  *   node.data: {
  *     mode: "json" | "string",
  *     template: string,
@@ -20,6 +20,42 @@
 
 function isObject(v) {
     return v !== null && typeof v === "object";
+}
+
+/**
+ * Walk a deep path against inputs, supporting:
+ *   - dot segments: a.b.c
+ *   - numeric array indices: a.0.b
+ * Root key may include colons (e.g., "arg:offer:token") and is treated as a whole.
+ */
+function deepGetFromInputs(path, inputs) {
+    if (!path || typeof path !== "string") return undefined;
+
+    // Split first segment as the root token; keep colons in root intact.
+    const dot = path.indexOf(".");
+    const root = dot === -1 ? path : path.slice(0, dot);
+    const rest = dot === -1 ? "" : path.slice(dot + 1);
+
+    let cur = inputs[root];
+    if (typeof cur === "undefined") return undefined;
+    if (!rest) return cur;
+
+    const parts = rest.split(".");
+    for (const part of parts) {
+        if (Array.isArray(cur)) {
+            const idx = Number(part);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= cur.length) return undefined;
+            cur = cur[idx];
+            continue;
+        }
+        if (cur !== null && typeof cur === "object") {
+            cur = cur[part];
+            if (typeof cur === "undefined") return undefined;
+            continue;
+        }
+        return undefined;
+    }
+    return cur;
 }
 
 /**
@@ -82,32 +118,41 @@ function findTokens(str = "") {
 }
 
 /**
- * Resolve token key to a value using maps.
+ * Resolve token key to a value using maps, then fallback to deep-path lookup against inputs.
  */
-function resolveToken(key, maps) {
+function resolveToken(key, maps, inputs) {
+    // Indexed qualified (from availableParams)
     if (/\[[0-9]+\]$/.test(key)) {
         const v = maps.byIndexed.get(key);
         if (typeof v !== "undefined") return v;
     }
+    // Qualified without index (from availableParams)
     if (key.includes(".")) {
         const v = maps.byQualified.get(key);
         if (typeof v !== "undefined") return v;
     }
+    // Simple name
     if (maps.bySimple.has(key)) return maps.bySimple.get(key);
+
+    // Fallback: deep path against inputs (supports dots + numeric indices),
+    // while treating the root segment literally (colons allowed).
+    const v = deepGetFromInputs(key, Object.fromEntries(maps.bySimple));
+    if (typeof v !== "undefined") return v;
+
     return undefined;
 }
 
 /**
  * Replace tokens in "string" mode.
  */
-function renderString(template, maps) {
+function renderString(template, maps, inputs) {
     if (typeof template !== "string" || template.length === 0) return "";
     const tokens = findTokens(template);
     if (tokens.length === 0) return template;
 
     let out = template;
     for (const t of tokens) {
-        const v = resolveToken(t.key, maps);
+        const v = resolveToken(t.key, maps, inputs);
         const rep =
             typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null
                 ? String(v)
@@ -122,7 +167,7 @@ function renderString(template, maps) {
 /**
  * Replace tokens in "json" mode with JSON-safe fragments.
  */
-function renderJson(template, maps) {
+function renderJson(template, maps, inputs) {
     if (typeof template !== "string" || template.length === 0) return null;
     const tokens = findTokens(template);
     if (tokens.length === 0) {
@@ -155,7 +200,7 @@ function renderJson(template, maps) {
 
     let result = template;
     for (const t of tokens) {
-        const v = resolveToken(t.key, maps);
+        const v = resolveToken(t.key, maps, inputs);
         const fragment = isInsideQuotes(t.start)
             ? JSON.stringify(String(v ?? ""))
             : JSON.stringify(v ?? null);
@@ -181,11 +226,11 @@ export async function run(ctx, node, inputs, _event) {
     const maps = buildVarMaps({ inputs, data, context });
 
     if (mode === "string") {
-        const value = renderString(template, maps);
+        const value = renderString(template, maps, inputs);
         return { value };
     }
 
-    const value = renderJson(template, maps);
+    const value = renderJson(template, maps, inputs);
     return { value };
 }
 

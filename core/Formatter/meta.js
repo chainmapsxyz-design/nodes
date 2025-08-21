@@ -21,7 +21,7 @@ export const meta = {
         { key: "value", label: "Value", type: ["string", "object"] }
     ],
 
-    // Inspector schema (README uses `config`; keeping `inspector` for compatibility)
+    // Inspector schema
     config: [
         { key: "mode", label: "Mode", type: "enum", options: ["json", "string"], default: "json" },
         { key: "template", label: "Template", type: "string", default: "{\n  \n}" }
@@ -33,9 +33,8 @@ export const meta = {
 
     // Defaults for new node instances
     getInitialData: () => ({
-        mode: "json",          // "json" | "string"
-        template: "{\n  \n}",  // user-authored text or JSON-with-{{vars}}
-        // optional runtime-fed list to drive the inspector UI (see inspector.jsx)
+        mode: "json",
+        template: "{\n  \n}",
         // availableParams: [{ name, type, src, preview?, nodeId? }, ...]
     }),
 
