@@ -1,8 +1,8 @@
 // nodes/webhook/inspector.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
- * Inspector for "events.webhook"
+ * Inspector for "event.webhook"
  *
  * Props:
  * - node: { id, type, data }
@@ -10,48 +10,52 @@ import { useEffect, useMemo, useState } from "react";
  * - onChange: (nextData) => void
  */
 export default function WebhookInspector({ node, value, onChange }) {
-  const initial = useMemo(
-    () => ({
-      method: value?.method ?? "POST",
-      url: value?.url ?? "",
-      headers:
-        Array.isArray(value?.headers) && value.headers.length > 0
-          ? value.headers
-          : [{ key: "Content-Type", value: "application/json" }],
-      timeoutMs: Number.isFinite(value?.timeoutMs) ? value.timeoutMs : 10000,
-    }),
-    [node?.id] // re-init if node changes
+  // Guard: if no node is selected, render nothing and avoid state churn.
+  if (!node) return null;
+
+  // Local state mirrors node.data
+  const [method, setMethod] = useState(value?.method ?? "POST");
+  const [url, setUrl] = useState(value?.url ?? "");
+  const [headers, setHeaders] = useState(
+    Array.isArray(value?.headers) && value.headers.length > 0
+      ? value.headers
+      : [{ key: "Content-Type", value: "application/json" }]
+  );
+  const [timeoutMs, setTimeoutMs] = useState(
+    Number.isFinite(value?.timeoutMs) ? value.timeoutMs : 10000
   );
 
-  const [method, setMethod] = useState(initial.method);
-  const [url, setUrl] = useState(initial.url);
-  const [headers, setHeaders] = useState(initial.headers);
-  const [timeoutMs, setTimeoutMs] = useState(initial.timeoutMs);
-
-  // Sync down if external changes update node.data
+  // Sync DOWN only when a different node becomes selected (or its data is externally replaced).
+  // This avoids resetting while deselecting to the canvas (node becomes null).
   useEffect(() => {
-    setMethod(initial.method);
-    setUrl(initial.url);
-    setHeaders(initial.headers);
-    setTimeoutMs(initial.timeoutMs);
+    // When node changes, refresh from value
+    setMethod(value?.method ?? "POST");
+    setUrl(value?.url ?? "");
+    setHeaders(
+      Array.isArray(value?.headers) && value.headers.length > 0
+        ? value.headers
+        : [{ key: "Content-Type", value: "application/json" }]
+    );
+    setTimeoutMs(Number.isFinite(value?.timeoutMs) ? value.timeoutMs : 10000);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial.method, initial.url, initial.timeoutMs]);
+  }, [node?.id]);
 
-  // Push up to graph state
+  // Push UP whenever local fields change (and a node is selected)
   useEffect(() => {
+    if (!node) return;
+
     const cleaned = (headers || [])
       .filter((h) => String(h.key || "").trim().length > 0)
       .map((h) => ({ key: String(h.key), value: String(h.value ?? "") }));
 
     onChange({
-      ...value,
       method,
       url,
       headers: cleaned,
-      timeoutMs: Number(timeoutMs) || 0,
+      timeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : 0,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [method, url, headers, timeoutMs]);
+  }, [node?.id, method, url, headers, timeoutMs]);
 
   function updateHeader(idx, patch) {
     setHeaders((prev) => {
@@ -80,13 +84,7 @@ export default function WebhookInspector({ node, value, onChange }) {
   };
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 12,
-        minWidth: 0, // allow shrink inside flex parents
-      }}
-    >
+    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
       <div style={{ fontWeight: 800, fontSize: 16 }}>Webhook</div>
 
       {/* Method */}
@@ -128,7 +126,7 @@ export default function WebhookInspector({ node, value, onChange }) {
                 display: "grid",
                 gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr) auto",
                 gap: 8,
-                minWidth: 0, // let the row shrink
+                minWidth: 0,
               }}
             >
               <input

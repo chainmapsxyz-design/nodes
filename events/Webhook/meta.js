@@ -5,7 +5,7 @@ export const meta = {
     description:
         "Sends the (single) upstream value as a JSON payload to a configured URL. Optional headers. Supports GET, POST, PUT, PATCH, DELETE.",
     keywords: ["http", "request", "post", "webhook", "fetch"],
-    type: "event.webhook",
+    type: "events.webhook",
     category: "Events",
     icon: "📡",
     blockchains: ["all"],
